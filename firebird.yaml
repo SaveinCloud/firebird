@@ -1,0 +1,118 @@
+---
+jpsType: install
+jpsVersion: '1.5'
+id: firebird
+name: Firebird Database
+categories:
+    - apps/popular
+    - apps/db-tools
+logo: https://firebirdsql.org/file/about/firebird-logo-90.png
+homepage: https://firebirdsql.org/en/start/
+description:
+  text: {
+      en: "Firebird is an open source database developed from InterBase 6 that supports more than 10 operating systems, making it an excellent choice for storing data.",
+      pt: "O Firebird é um banco de dados de código aberto desenvolvido a partir do InterBase 6, compatível com mais de 10 sistemas operacionais, se trata de uma excelente opção para o armazenamento de dados.",
+      es: "Firebird es una base de datos de código abierto desarrollada desde InterBase 6 que admite más de 10 sistemas operativos, lo que la convierte en una excelente opción para almacenar datos.",
+  }
+  short: {
+      en: "Install a server with Firebird database in a few clicks.",
+      pt: "Instale um servidor com banco de dados Firebird em poucos cliques.",
+      es: "Instale un servidor con la base de datos Firebird en unos pocos clics.",
+  }
+
+settings:
+  fields:
+    - type: list
+      name: firebird_version
+      values:
+          http://191.243.199.191/marketplace-jelastic/firebird/firebird_2_0/firebird.tar.gz: Firebird 2.0.6
+          http://191.243.199.191/marketplace-jelastic/firebird/firebird_2_1/firebird.tar.gz: Firebird 2.1.7
+          http://191.243.199.191/marketplace-jelastic/firebird/firebird_2_5/firebird.tar.gz: Firebird 2.5.9
+      caption: {
+            en: "Firebird version",
+            pt: "Versão do Firebird",
+            es: "Versión de Firebird",
+        }
+      default: http://191.243.199.191/marketplace-jelastic/firebird/firebird_2_5/firebird.tar.gz
+      required: true
+  
+globals:
+    DB_PASS: ${fn.password(20)}
+    USER_FTP: ftp-user
+    PASS_FTP: ${fn.password(20)}
+    
+nodes:
+    - nodeType: centos-vps
+      count: 1
+      cloudlets: 4
+      nodeGroup: cp
+      extip: true
+            
+onInstall:
+    - installFIREBIRD:
+    - installFTP:
+    
+actions:
+    installFIREBIRD:
+        - cmd[cp]: |-
+            yum -y update
+            yum -y upgrade
+            yum -y install compat-libstdc++-33.x86_64
+            yum -y install libncurses.so.5
+            wget '${settings.firebird_version}'
+            tar -xpzvf firebird.tar.gz
+            cd firebird
+            yes '${globals.DB_PASS}' | ./install.sh
+            service firebird restart
+            cd /opt/firebird/
+            mkdir data
+            iptables -A INPUT -p udp --dport 3050 -j ACCEPT
+            iptables -A INPUT -p tcp --dport 3050 -j ACCEPT
+            iptables -I INPUT -p tcp --dport 3050 -j ACCEPT
+            service iptables save
+            echo "chown -R firebird /opt/firebird/data/" >> /bin/permissao
+            echo "chgrp -R firebird /opt/firebird/data/" >> /bin/permissao
+            echo "* * * * * permissao" >> /var/spool/cron/root             
+            chmod 777 /bin/permissao
+            permissao
+        
+    installFTP:
+        - cmd[cp]: |-
+            yum install -y vsftpd
+            service vsftpd restart 
+            adduser ${globals.USER_FTP}
+            yes '${globals.PASS_FTP}' | passwd ${globals.USER_FTP} --stdin
+            sed -i 's/anonymous_enable=YES/anonymous_enable=NO/g' /etc/vsftpd/vsftpd.conf
+            usermod -d /opt/firebird/data ${globals.USER_FTP}
+            chown -R ${globals.USER_FTP} /opt/firebird/data/
+            chgrp -R ${globals.USER_FTP} /opt/firebird/data/
+            iptables -A INPUT -p udp --dport 21 -j ACCEPT
+            iptables -A INPUT -p tcp --dport 21 -j ACCEPT
+            iptables -I INPUT -p tcp --dport 21 -j ACCEPT
+            service iptables save
+            
+success: |
+  ![Firebird](https://firebirdsql.org/file/about/firebird-logo-90.png)
+  
+  ### Abaixo seguem os dados de acesso ao Firebird e FTP.
+  
+  ##### Dados de acesso ao Firebird:
+  
+  
+  **Host e porta:** ${nodes.cp.extIPs}:3050
+  
+  **User Firebird:** SYSDBA
+  
+  **Password Firebird:** ${globals.DB_PASS}
+  
+  ---
+  
+  
+  ##### Dados de acesso ao FTP:
+  
+  
+  **Host e porta:** ${nodes.cp.extIPs}:21
+  
+  **User FTP:** ${globals.USER_FTP}
+  
+  **Password FTP:** ${globals.PASS_FTP}
